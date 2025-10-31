@@ -1,5 +1,6 @@
-package com.example.createyourmeme.network
+package com.example.createyourmeme.data.network
 
+import com.example.createyourmeme.data.model.MemeResponse
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET

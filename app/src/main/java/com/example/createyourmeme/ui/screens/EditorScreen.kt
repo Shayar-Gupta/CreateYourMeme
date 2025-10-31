@@ -1,58 +1,64 @@
 package com.example.createyourmeme.ui.screens
 
-import android.Manifest
-import android.app.Activity
-import android.content.ContentValues
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.drawable.BitmapDrawable
-import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
-import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import coil.imageLoader
-import coil.request.ImageRequest
-import com.example.createyourmeme.network.MemeItem
+import com.example.createyourmeme.data.model.MemeItem
+import com.example.createyourmeme.data.repository.MemeEditorRepository
+import com.example.createyourmeme.domain.model.TextBoxState
 import com.example.createyourmeme.ui.viewmodel.EditorViewModel
-import com.example.createyourmeme.ui.viewmodel.TextBoxState
-import kotlinx.coroutines.*
-import java.io.File
-import java.io.FileOutputStream
+import com.example.createyourmeme.utils.PermissionUtils.ensureStoragePermission
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @RequiresApi(Build.VERSION_CODES.Q)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,7 +87,7 @@ fun EditorScreen(
                     IconButton(onClick = {
                         if (ensureStoragePermission(context)) {
                             CoroutineScope(Dispatchers.IO).launch {
-                                saveComposedImage(context, meme, textBoxes, imageWidth, imageHeight)
+                                vm.saveMeme(context, meme, imageWidth, imageHeight)
                             }
                         } else {
                             Toast.makeText(
@@ -95,7 +101,7 @@ fun EditorScreen(
                     }
 
                     IconButton(onClick = {
-                        shareComposedImage(context, meme, textBoxes, imageWidth, imageHeight)
+                        vm.shareMeme(context, meme, imageWidth, imageHeight)
                     }) {
                         Icon(Icons.Default.Share, contentDescription = "Share")
                     }
@@ -212,245 +218,5 @@ fun DraggableEditableText(
                     .scale(scale)
             )
         }
-    }
-}
-
-suspend fun loadBitmapFromUrl(context: Context, url: String): Bitmap? =
-    withContext(Dispatchers.IO) {
-        try {
-            val request = ImageRequest.Builder(context)
-                .data(url)
-                .allowHardware(false)
-                .build()
-            val result = context.imageLoader.execute(request).drawable ?: return@withContext null
-            if (result is BitmapDrawable) result.bitmap
-            else {
-                val bmp = Bitmap.createBitmap(
-                    result.intrinsicWidth.takeIf { it > 0 } ?: 800,
-                    result.intrinsicHeight.takeIf { it > 0 } ?: 800,
-                    Bitmap.Config.ARGB_8888
-                )
-                val canvas = Canvas(bmp)
-                result.setBounds(0, 0, canvas.width, canvas.height)
-                result.draw(canvas)
-                bmp
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-@RequiresApi(Build.VERSION_CODES.Q)
-fun saveComposedImage(
-    context: Context,
-    meme: MemeItem,
-    texts: List<TextBoxState>,
-    displayedWidth: Int,
-    displayedHeight: Int
-) {
-    val appContext = context.applicationContext
-    val density = context.resources.displayMetrics.density
-
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            Log.d("SaveMeme", "Loading meme bitmap from: ${meme.url}")
-            val baseBitmap = loadBitmapFromUrl(appContext, meme.url)
-            if (baseBitmap == null) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(appContext, "❌ Failed to load base image", Toast.LENGTH_SHORT).show()
-                }
-                return@launch
-            }
-
-            val result = Bitmap.createBitmap(baseBitmap.width, baseBitmap.height, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(result)
-            canvas.drawBitmap(baseBitmap, 0f, 0f, null)
-
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                textAlign = Paint.Align.LEFT
-                isFakeBoldText = true
-            }
-
-            val scale = minOf(
-                displayedWidth * density / baseBitmap.width.toFloat(),
-                displayedHeight * density / baseBitmap.height.toFloat()
-            )
-            val xOffset = ((displayedWidth * density) - baseBitmap.width * scale) / 2f
-            val yOffset = ((displayedHeight * density) - baseBitmap.height * scale) / 2f
-
-            texts.forEach { t ->
-                paint.color = t.color.toArgb()
-                paint.textSize = t.fontSize.value * density * t.scale
-                val actualX = ((t.x * density) - xOffset) / scale
-                val actualY = ((t.y * density) - yOffset) / scale
-                canvas.drawText(t.text, actualX, actualY, paint)
-            }
-
-            val resolver = appContext.contentResolver
-            val filename = "meme_${System.currentTimeMillis()}.jpg"
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/CreateYourMeme")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            }
-
-            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            if (uri == null) {
-                Log.e("SaveMeme", "Failed to insert MediaStore entry — using fallback file save")
-                val fallback = File(appContext.getExternalFilesDir(Environment.DIRECTORY_PICTURES), filename)
-                FileOutputStream(fallback).use {
-                    result.compress(Bitmap.CompressFormat.JPEG, 100, it)
-                }
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(appContext, "✅ Saved to app folder: ${fallback.absolutePath}", Toast.LENGTH_LONG).show()
-                }
-                return@launch
-            }
-
-            resolver.openOutputStream(uri)?.use {
-                result.compress(Bitmap.CompressFormat.JPEG, 100, it)
-            }
-
-            contentValues.clear()
-            contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(uri, contentValues, null, null)
-
-            Log.d("SaveMeme", "✅ Meme saved to: $uri")
-
-            withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, "✅ Meme saved to gallery", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            Log.e("SaveMeme", "❌ Error saving meme: ${e.message}", e)
-            withContext(Dispatchers.Main) {
-                Toast.makeText(appContext, "❌ Save failed: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-}
-
-
-fun shareComposedImage(
-    context: Context,
-    meme: MemeItem,
-    texts: List<TextBoxState>,
-    displayedWidth: Int,
-    displayedHeight: Int
-) {
-    val density = context.resources.displayMetrics.density
-    val scope = CoroutineScope(Dispatchers.IO)
-
-    scope.launch {
-        val bmp = loadBitmapFromUrl(context, meme.url)
-        if (bmp == null) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "❌ Failed to load image", Toast.LENGTH_SHORT).show()
-            }
-            return@launch
-        }
-
-        val result = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        canvas.drawBitmap(bmp, 0f, 0f, null)
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.LEFT
-            isFakeBoldText = true
-        }
-
-        val scale = minOf(
-            displayedWidth * density / bmp.width.toFloat(),
-            displayedHeight * density / bmp.height.toFloat()
-        )
-        val xOffset = ((displayedWidth * density) - bmp.width * scale) / 2f
-        val yOffset = ((displayedHeight * density) - bmp.height * scale) / 2f
-
-        texts.forEach { t ->
-            paint.color = t.color.toArgb()
-            paint.textSize = t.fontSize.value * density * t.scale
-            val actualX = ((t.x * density) - xOffset) / scale
-            val actualY = ((t.y * density) - yOffset) / scale
-            canvas.drawText(t.text, actualX, actualY, paint)
-        }
-
-        val uri = saveBitmapToCache(context, result)
-        withContext(Dispatchers.Main) {
-            if (uri != null) {
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "image/png"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                context.startActivity(Intent.createChooser(intent, "Share meme"))
-            } else {
-                Toast.makeText(context, "❌ Share failed", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-}
-
-@RequiresApi(Build.VERSION_CODES.Q)
-suspend fun saveBitmapToGallery(context: Context, bitmap: Bitmap): Boolean {
-    return withContext(Dispatchers.IO) {
-        try {
-            val filename = "meme_${System.currentTimeMillis()}.jpg"
-            val resolver = context.contentResolver
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                put(
-                    MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_PICTURES + "/CreateYourMeme"
-                )
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            }
-
-            val uri =
-                resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                    ?: return@withContext false
-            resolver.openOutputStream(uri)?.use {
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
-            }
-
-            contentValues.clear()
-            contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(uri, contentValues, null, null)
-
-            Log.d("SaveMeme", "✅ Saved meme to: $uri")
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-    }
-}
-
-fun saveBitmapToCache(context: Context, bitmap: Bitmap): Uri? {
-    return try {
-        val cacheDir = File(context.cacheDir, "shared_images")
-        cacheDir.mkdirs()
-        val file = File(cacheDir, "share_meme_${System.currentTimeMillis()}.png")
-        FileOutputStream(file).use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
-        FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
-    }
-}
-
-fun ensureStoragePermission(context: Context): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) true
-    else {
-        val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
-        val granted = ContextCompat.checkSelfPermission(context, permission) ==
-                PackageManager.PERMISSION_GRANTED
-        if (!granted && context is Activity) {
-            ActivityCompat.requestPermissions(context, arrayOf(permission), 100)
-        }
-        granted
     }
 }

@@ -1,4 +1,4 @@
-package com.example.creatememe.ui.theme
+package com.example.createyourmeme.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
