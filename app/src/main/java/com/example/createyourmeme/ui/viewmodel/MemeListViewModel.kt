@@ -2,8 +2,8 @@ package com.example.createyourmeme.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.createyourmeme.data.MemeRepository
-import com.example.createyourmeme.network.MemeItem
+import com.example.createyourmeme.data.model.MemeItem
+import com.example.createyourmeme.data.repository.MemeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

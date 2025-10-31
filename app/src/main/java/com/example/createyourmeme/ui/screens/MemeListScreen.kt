@@ -18,9 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.createyourmeme.network.MemeItem
 import com.example.createyourmeme.ui.viewmodel.MemeListViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.createyourmeme.data.model.MemeItem
 
 @Composable
 fun MemeListScreen(onMemeSelected: (MemeItem) -> Unit, viewModel: MemeListViewModel = viewModel()) {

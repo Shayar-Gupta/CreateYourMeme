@@ -1,24 +1,27 @@
 package com.example.createyourmeme.ui.viewmodel
 
+import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.createyourmeme.data.model.MemeItem
+import com.example.createyourmeme.domain.model.TextBoxState
+import com.example.createyourmeme.domain.usecase.SaveMemeUseCase
+import com.example.createyourmeme.domain.usecase.ShareMemeUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
-data class TextBoxState(
-    val id: Int,
-    val text: String,
-    val x: Float,
-    val y: Float,
-    val fontSize: TextUnit,
-    val color: Color,
-    val scale: Float = 1f
-)
+class EditorViewModel(
+    private val saveMemeUseCase: SaveMemeUseCase = SaveMemeUseCase(),
+    private val shareMemeUseCase: ShareMemeUseCase = ShareMemeUseCase()
 
-class EditorViewModel : ViewModel() {
+) : ViewModel() {
     private val _textBoxes = MutableStateFlow<List<TextBoxState>>(emptyList())
     val textBoxes: StateFlow<List<TextBoxState>> = _textBoxes.asStateFlow()
 
@@ -54,5 +57,18 @@ class EditorViewModel : ViewModel() {
 
     fun clear() {
         _textBoxes.value = emptyList()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun saveMeme(context: Context, meme: MemeItem, width: Int, height: Int) {
+        viewModelScope.launch {
+            saveMemeUseCase.execute(context, meme, _textBoxes.value, width, height)
+        }
+    }
+
+    fun shareMeme(context: Context, meme: MemeItem, width: Int, height: Int) {
+        viewModelScope.launch {
+            shareMemeUseCase.execute(context, meme, _textBoxes.value, width, height)
+        }
     }
 }
